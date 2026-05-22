@@ -7,6 +7,7 @@ import networkx as nx
 import math
 from typing import List, Dict, Tuple
 from datetime import datetime, timedelta
+from kafka import KafkaProducer
 
 app = FastAPI(title="Supply Chain API", description="Predictive Engine & Routing API")
 
@@ -15,7 +16,7 @@ DB_CONFIG = {
     'user': 'admin',
     'password': 'adminpassword',
     'host': 'localhost',
-    'port': '5432'
+    'port': '5433'
 }
 
 def get_db_connection():
@@ -27,6 +28,38 @@ class RouteRequest(BaseModel):
 def calculate_distance(node1, node2):
     # Simple Euclidean distance for heuristic routing
     return math.sqrt((node1['lat'] - node2['lat'])**2 + (node1['lon'] - node2['lon'])**2)
+
+@app.get("/health")
+def health_check():
+    health_status = {"postgres": "unhealthy", "kafka": "unhealthy"}
+    is_healthy = True
+
+    # Check Postgres
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        conn.close()
+        health_status["postgres"] = "healthy"
+    except Exception as e:
+        is_healthy = False
+        health_status["postgres_error"] = str(e)
+
+    # Check Kafka
+    try:
+        producer = KafkaProducer(
+            bootstrap_servers=['localhost:9092'],
+            request_timeout_ms=2000
+        )
+        producer.close()
+        health_status["kafka"] = "healthy"
+    except Exception as e:
+        is_healthy = False
+        health_status["kafka_error"] = str(e)
+
+    if not is_healthy:
+        raise HTTPException(status_code=503, detail=health_status)
+    return {"status": "healthy", "details": health_status}
 
 @app.get("/api/forecast")
 def forecast_demand(sku: str = None):

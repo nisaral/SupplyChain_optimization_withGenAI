@@ -4,7 +4,7 @@ from psycopg2.extras import execute_values
 from kafka import KafkaConsumer
 from pydantic import BaseModel, ValidationError, Field, field_validator
 from typing import Optional
-from datetime import date
+from datetime import date, datetime
 
 KAFKA_BROKER = 'localhost:9092'
 TOPIC_NAME = 'supply_chain_events'
@@ -14,7 +14,7 @@ DB_CONFIG = {
     'user': 'admin',
     'password': 'adminpassword',
     'host': 'localhost',
-    'port': '5432'
+    'port': '5433'
 }
 
 # Pydantic Schemas for Validation
@@ -34,6 +34,9 @@ class LogisticsTelemetry(BaseModel):
     customs_clearance_status: Optional[str] = Field(alias="Customs Clearance Status", default=None)
     tracking_events: Optional[str] = Field(alias="Tracking Events", default=None)
     shipment_cost: Optional[float] = Field(alias="Shipment Cost", default=None)
+    source_id: Optional[str] = None
+    ingestion_timestamp: Optional[datetime] = None
+    transform_version: Optional[str] = None
 
     @field_validator('delivery_date', 'estimated_delivery_date', mode='before')
     def parse_dates(cls, value):
@@ -74,6 +77,19 @@ def log_exception(conn, payload, error_message):
         print(f"Failed to log exception: {e}")
         conn.rollback()
 
+def log_to_dlq(conn, payload, error_message):
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO dead_letter_queue (payload, error_message) VALUES (%s, %s)",
+                (json.dumps(payload), str(error_message))
+            )
+        conn.commit()
+        print(f"Logged to DLQ for payload: {payload}")
+    except Exception as e:
+        print(f"Failed to log to DLQ: {e}")
+        conn.rollback()
+
 def insert_logistics_telemetry(conn, data):
     try:
         with conn.cursor() as cursor:
@@ -81,11 +97,13 @@ def insert_logistics_telemetry(conn, data):
                 INSERT INTO logistics_telemetry (
                     order_id, tracking_id, shipment_mode, shipping_address, delivery_date,
                     order_value, product_description, shipment_status, order_total, product_id,
-                    return_status, estimated_delivery_date, customs_clearance_status, tracking_events, shipment_cost
+                    return_status, estimated_delivery_date, customs_clearance_status, tracking_events, shipment_cost,
+                    source_id, ingestion_timestamp, transform_version
                 ) VALUES (
                     %(order_id)s, %(tracking_id)s, %(shipment_mode)s, %(shipping_address)s, %(delivery_date)s,
                     %(order_value)s, %(product_description)s, %(shipment_status)s, %(order_total)s, %(product_id)s,
-                    %(return_status)s, %(estimated_delivery_date)s, %(customs_clearance_status)s, %(tracking_events)s, %(shipment_cost)s
+                    %(return_status)s, %(estimated_delivery_date)s, %(customs_clearance_status)s, %(tracking_events)s, %(shipment_cost)s,
+                    %(source_id)s, %(ingestion_timestamp)s, %(transform_version)s
                 )
             """, data.model_dump())
         conn.commit()
@@ -140,8 +158,8 @@ def consume_events():
                 else:
                     log_exception(conn, payload, f"Unknown event_type: {event_type}")
             except ValidationError as e:
-                # Catch Pydantic validation errors and route to exception_logs
-                log_exception(conn, payload, e.json())
+                # Catch Pydantic validation errors and route to DLQ
+                log_to_dlq(conn, payload, e.json())
             except Exception as e:
                 # Catch DB errors
                 log_exception(conn, payload, str(e))

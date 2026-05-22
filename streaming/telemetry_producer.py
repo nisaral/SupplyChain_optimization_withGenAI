@@ -19,9 +19,14 @@ def stream_csv_to_kafka(filepath, event_type, producer):
         print(f"File not found: {filepath}")
         return
 
+    import datetime
     with open(filepath, mode='r', encoding='utf-8-sig') as file:
         reader = csv.DictReader(file)
         for row in reader:
+            row['source_id'] = "SAP_ERP_01" if event_type == "logistics_telemetry" else "WMS_01"
+            row['ingestion_timestamp'] = datetime.datetime.utcnow().isoformat()
+            row['transform_version'] = "v1.1"
+            
             payload = {
                 "event_type": event_type,
                 "data": row
@@ -45,7 +50,7 @@ if __name__ == "__main__":
         print("Successfully connected to Kafka.")
         
         # Paths to the CSV files
-        base_dir = os.path.join("Databases", "Chatbot_Knowledge_base")
+        base_dir = os.path.join("..", "Databases", "Chatbot_Knowledge_base")
         shipments_csv = os.path.join(base_dir, "shipments.csv")
         inventory_csv = os.path.join(base_dir, "category_stock_inventoryy.csv")
         

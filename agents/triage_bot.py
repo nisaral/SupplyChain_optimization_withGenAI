@@ -6,7 +6,7 @@ import argparse
 
 # Setup DB connection string
 # Format: postgresql+psycopg2://user:password@host:port/dbname
-DB_URI = "postgresql+psycopg2://admin:adminpassword@localhost:5432/supply_chain"
+DB_URI = "postgresql+psycopg2://admin:adminpassword@localhost:5433/supply_chain"
 
 def get_sql_agent():
     # Make sure OPENAI_API_KEY is set in your environment variables

@@ -15,7 +15,10 @@ CREATE TABLE IF NOT EXISTS logistics_telemetry (
     customs_clearance_status VARCHAR(50),
     tracking_events TEXT,
     shipment_cost NUMERIC,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    source_id VARCHAR(50),
+    ingestion_timestamp TIMESTAMP,
+    transform_version VARCHAR(10)
 );
 
 CREATE TABLE IF NOT EXISTS inventory_levels (
@@ -27,6 +30,14 @@ CREATE TABLE IF NOT EXISTS inventory_levels (
 );
 
 CREATE TABLE IF NOT EXISTS exception_logs (
+    id SERIAL PRIMARY KEY,
+    payload TEXT,
+    error_message TEXT,
+    status VARCHAR(20) DEFAULT 'PENDING',
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS dead_letter_queue (
     id SERIAL PRIMARY KEY,
     payload TEXT,
     error_message TEXT,
